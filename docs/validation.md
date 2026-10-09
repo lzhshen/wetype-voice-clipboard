@@ -35,4 +35,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -
 - 从带空格的解压目录启动只读诊断，成功定位当前微信输入法的语音对象。
 - 此次包验证没有切换焦点、启动语音或写入剪贴板。
 
-GitHub Actions 的首次远程构建与 Release 下载验证，需要在所有者确认、首次提交和发布之后执行；当前记录不将其算作已完成。
+## GitHub Actions 与正式下载验证
+
+- [首次 main 自动构建](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/37905370287)：通过。编译、发行包校验、解压启动检查及构建产物上传均成功。
+- [v0.1.0 自动构建与发布](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/37905530837)：通过。标签与 `VERSION` 匹配，构建任务和 Release 发布任务均成功。
+- [正式 Release](https://github.com/lzhshen/wetype-voice-clipboard/releases/tag/v0.1.0)：包含单文件 EXE、ZIP 和 `SHA256SUMS.txt` 三个公开下载文件。
+
+GitHub 托管运行器没有安装真实微信输入法，因此 CI 检查的是包结构及诊断程序可启动，并明确报告未在该环境执行真实输入法连接测试。
+
+发布后，另外通过公开下载链接、不带认证信息下载三个 Release 文件：
+
+1. 下载文件的 SHA-256 与 GitHub Release 元数据中的文件摘要一致。
+2. 单文件 EXE 和 ZIP 均通过随 Release 提供的校验记录。
+3. ZIP 解压后的程序与单文件下载完全一致，文件版本为 `0.1.0.0`，架构为 Windows x64。
+4. 对下载回来的程序执行 `test-package.ps1 -LiveProbe`，在真实输入法环境成功读取语音对象。
+5. 下载版验证没有开始或结束语音、切换焦点或写入剪贴板。
+
+正式下载文件的 SHA-256：
+
+| 文件 | SHA-256 |
+| --- | --- |
+| `WeTypeVoiceCapture-v0.1.0-win-x64.exe` | `3c591b4ddb62439066dd1fc0e7a2a86395e64fca167da423ac1132979d06100c` |
+| `wetype-voice-clipboard-v0.1.0-win-x64.zip` | `c1d6eca86f1953aeb362f7b6117e7591fc16229045f4e5cb2d62052cd4b6c914` |
+
+发布文件由 CI 编译；其字节校验值无需与此前单独进行的本地编译一致。以上校验值对应实际公开发布的文件。
