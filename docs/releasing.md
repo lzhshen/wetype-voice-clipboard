@@ -18,8 +18,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -
 
 ```text
 dist/
-  WeTypeVoiceCapture-v0.1.0-win-x64.exe
-  wetype-voice-clipboard-v0.1.0-win-x64.zip
+  WeTypeVoiceCapture-v0.1.1-win-x64.exe
+  wetype-voice-clipboard-v0.1.1-win-x64.zip
   SHA256SUMS.txt
 ```
 
@@ -32,7 +32,7 @@ ZIP 中只包含 `WeTypeVoiceCapture.exe`、`README.txt` 和 `LICENSE.txt`。
 发布前由维护者审阅源码、兼容范围、验证结果、许可证和待发布的版本。
 
 确认后，将审阅过的内容提交到 `main` 并推送。
-等 GitHub Actions 的分支构建通过，再创建与 `VERSION` 一致的标签，例如 `v0.1.0`，并推送该标签。
+等 GitHub Actions 的分支构建通过，再创建与 `VERSION` 一致的标签，例如 `v0.1.1`，并推送该标签。
 
 ## GitHub 自动发布
 

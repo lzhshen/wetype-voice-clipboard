@@ -39,6 +39,33 @@ $captureInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($captureStandalone)
 if ($captureInfo.FileVersion -ne "$captureVersion.0") { throw 'Executable version does not match VERSION.' }
 Write-Output "PASS: EXE architecture, version $captureVersion, and release checksums."
 
+# Exercise the same .NET Framework Icon path used by NotifyIcon. Some ICO
+# encodings compile successfully but fail when Windows Forms renders them.
+Add-Type -AssemblyName System.Drawing
+$captureAssembly = [Reflection.Assembly]::LoadFile($captureStandalone)
+# .NET Framework caps Icon selection below 256px; the 256px PNG frame is for Explorer.
+foreach ($captureSize in @(16, 20, 24, 32, 40, 48, 64, 128)) {
+    $captureIconStream = $captureAssembly.GetManifestResourceStream('WeTypeVoiceCapture.AppIcon.ico')
+    if ($null -eq $captureIconStream) { throw 'The embedded tray icon is missing.' }
+    $captureOriginalIcon = [Drawing.Icon]::new($captureIconStream, $captureSize, $captureSize)
+    try { $captureTrayIcon = [Drawing.Icon]$captureOriginalIcon.Clone() }
+    finally { $captureOriginalIcon.Dispose(); $captureIconStream.Dispose() }
+    $captureBitmap = [Drawing.Bitmap]::new($captureSize, $captureSize)
+    $captureGraphics = [Drawing.Graphics]::FromImage($captureBitmap)
+    try {
+        if ($captureTrayIcon.Width -ne $captureSize -or $captureTrayIcon.Height -ne $captureSize) {
+            throw 'The tray icon is missing a required display size.'
+        }
+        $captureGraphics.Clear([Drawing.Color]::Transparent)
+        $captureGraphics.DrawIcon($captureTrayIcon, 0, 0)
+        if ($captureBitmap.GetPixel(0, 0).A -ne 0 -or
+            $captureBitmap.GetPixel([int]($captureSize / 2), [int]($captureSize / 2)).A -eq 0) {
+            throw 'The tray icon lost its transparency or visible artwork.'
+        }
+    } finally { $captureGraphics.Dispose(); $captureBitmap.Dispose(); $captureTrayIcon.Dispose() }
+}
+Write-Output 'PASS: embedded tray icon renders with transparency at all eight tray/display sizes (16-128px).'
+
 # Test from the ZIP, which is the environment a user gets after downloading.
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $captureZip = [IO.Compression.ZipFile]::OpenRead($captureZipPath)

@@ -19,6 +19,10 @@ $captureStage = Join-Path $captureRoot "obj\package-$captureVersion"
 $captureDist = Join-Path $captureRoot 'dist'
 New-Item -ItemType Directory -Path $captureStage, $captureDist -Force | Out-Null
 
+# Keep the Explorer/shortcut icon and the embedded tray icon identical.
+& (Join-Path $PSScriptRoot 'build-icons.ps1')
+$captureIcon = Join-Path $captureRoot 'assets\app.ico'
+
 $captureVersionSource = Join-Path $captureStage 'VersionInfo.cs'
 $captureVersionCode = @"
 using System.Reflection;
@@ -33,6 +37,7 @@ $captureSources = @(Get-ChildItem -LiteralPath (Join-Path $captureRoot 'src') -F
 $captureCompilerArguments = @(
     '/nologo', '/target:winexe', '/platform:x64', '/optimize+', '/warnaserror+', '/codepage:65001',
     '/reference:System.Windows.Forms.dll', '/reference:System.Drawing.dll',
+    "/win32icon:$captureIcon", "/resource:$captureIcon,WeTypeVoiceCapture.AppIcon.ico",
     "/win32manifest:$(Join-Path $captureRoot 'src\app.manifest')", "/out:$captureExe"
 ) + $captureSources + @($captureVersionSource)
 & $captureCompiler @captureCompilerArguments

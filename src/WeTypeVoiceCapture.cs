@@ -157,6 +157,7 @@ namespace WeTypeVoiceCapture
     sealed class Capture : ApplicationContext
     {
         readonly NotifyIcon tray;
+        readonly Icon trayIcon;
         readonly ToolStripMenuItem stateItem, pauseItem;
         readonly System.Windows.Forms.Timer timer;
         readonly string statusFile;
@@ -182,7 +183,10 @@ namespace WeTypeVoiceCapture
             };
             menu.Items.Add(stateItem); menu.Items.Add(pauseItem); menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
-            tray = new NotifyIcon { Icon = SystemIcons.Information, Text = "微信语音复制", ContextMenuStrip = menu, Visible = true };
+            using (var stream = typeof(Capture).Assembly.GetManifestResourceStream("WeTypeVoiceCapture.AppIcon.ico"))
+            using (var icon = new Icon(stream, SystemInformation.SmallIconSize))
+                trayIcon = (Icon)icon.Clone();
+            tray = new NotifyIcon { Icon = trayIcon, Text = "微信语音复制", ContextMenuStrip = menu, Visible = true };
             timer = new System.Windows.Forms.Timer { Interval = 250 };
             timer.Tick += Tick; timer.Start();
             Status("正在连接微信输入法");
@@ -279,7 +283,7 @@ namespace WeTypeVoiceCapture
         {
             timer.Stop(); timer.Dispose();
             if (source != null) source.Dispose();
-            Status("已退出"); tray.Visible = false; tray.Dispose();
+            Status("已退出"); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
             base.ExitThreadCore();
         }
     }
