@@ -1,0 +1,75 @@
+name: Build Windows portable release
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+          if ($env:GITHUB_REF_NAME -ne "v$version") {
+            throw 'Release tag must match VERSION.'
+          }
+      - name: Build portable files
+        shell: powershell
+        run: .\scripts\build.ps1
+      - name: Validate downloaded-package layout and startup
+        shell: powershell
+        run: .\scripts\test-package.ps1
+      - name: Store build files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64-portable
+          path: |
+            dist/*.exe
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download the exact tested build and publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:GITHUB_RUN_ID --repo $env:GITHUB_REPOSITORY --name windows-x64-portable --dir release-files
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download tested build files.' }
+          foreach ($line in Get-Content -LiteralPath release-files/SHA256SUMS.txt) {
+            if ($line -notmatch '^([a-f0-9]{64})  ([^\\/]+)$') { throw 'Invalid checksum entry.' }
+            $expected = $Matches[1]
+            $file = Join-Path release-files $Matches[2]
+            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ine $expected) {
+              throw 'Release asset checksum mismatch.'
+            }
+          }
+          $assets = @(Get-ChildItem -LiteralPath release-files -File | ForEach-Object FullName)
+          gh release create $env:GITHUB_REF_NAME @assets --repo $env:GITHUB_REPOSITORY --verify-tag --title "微信语音复制 $env:GITHUB_REF_NAME" --notes-file docs/release-notes.md
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
