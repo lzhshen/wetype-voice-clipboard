@@ -1,6 +1,23 @@
 # 验证记录
 
-日期：2026-10-09。
+最近验证日期：2026-10-12。
+
+## v0.2.0 开机启动配置验证
+
+- 本地构建通过，生成带有 `0.2.0.0` 文件版本的 Windows x64 图形程序。
+- 发行包检查通过：EXE 与 ZIP 校验和、文件版本、ZIP 内容、解压后的程序以及八种托盘图标尺寸均正常。
+- `test-package.ps1 -LiveProbe` 通过，发行包中的程序成功读取真实微信输入法的语音对象；没有启动语音、切换焦点或写入剪贴板。
+- `test-startup.ps1` 使用发行包 EXE 中的启动配置实现，在独立的临时注册表位置验证默认关闭、读取与刷新不自动启用、重复启用与取消、跨实例保留设置、带空格和中文的路径、移动后更新路径，以及保留其他应用的值。验证通过，临时注册表键已清理。
+- 启动配置检查已加入 GitHub Actions；以上记录为本地验证结果，远端 CI 结果以对应 PR 或构建记录为准。
+- 未改动本机真实的开机启动项，也未注销或重启当前 Windows 会话，因此实际登录时的自动启动仍需人工验证。
+
+执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -LiveProbe
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
+```
 
 ## v0.1.1 图标更新验证
 
