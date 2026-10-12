@@ -19,9 +19,9 @@
 
 从 [Releases](https://github.com/lzhshen/wetype-voice-clipboard/releases) 下载：
 
-- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/WeTypeVoiceCapture-v0.1.1-win-x64.exe)：下载后直接双击运行。
-- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/wetype-voice-clipboard-v0.1.1-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
-- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/SHA256SUMS.txt)：下载文件的校验值。
+- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/WeTypeVoiceCapture-v0.2.0-win-x64.exe)：下载后直接双击运行。
+- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/wetype-voice-clipboard-v0.2.0-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
+- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/SHA256SUMS.txt)：下载文件的校验值。
 
 环境要求：Windows 10/11 x64、.NET Framework 4.8，以及受支持的微信输入法程序。
 无需安装 Python、Node.js、Visual Studio 或额外的语音模型。
@@ -34,8 +34,22 @@ Release 中的程序目前未进行代码签名。
 
 通过向日葵远程粘贴时，需保持原有的跨设备剪贴板通路可用；工具本身只写入 Windows 剪贴板。
 
-右键托盘图标可以选择“暂停复制”“恢复复制”或“退出”。不自动设置开机启动，重复运行只保留一个实例。
+右键托盘图标可以选择“暂停复制”“恢复复制”“开机启动”或“退出”。重复运行只保留一个实例。
 如果之前运行着本工具的测试版本，先从托盘退出旧版本，再启动下载的新版本。
+
+## 开机启动配置
+
+开机启动功能从 v0.2.0 起提供。
+
+1. 先把 EXE（或解压后的便携包）放到准备长期保留的目录，再运行程序。
+2. 右键托盘图标，点击“开机启动”。菜单中出现勾选，表示已保存启动设置。
+3. 下次当前用户登录 Windows 时，工具会在后台托盘运行；微信输入法尚未启动时会自动等待并连接。
+4. 再次点击“开机启动”取消勾选，即可关闭。选择“退出”只结束本次运行，不会取消开机启动。
+
+首次运行默认关闭，无需管理员权限。设置保存在当前用户的 Windows 启动项中：
+`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run` 下的 `WeTypeVoiceCapture`，内容为带引号的 EXE 完整路径。
+移动或升级后，先退出旧实例，再手动运行新位置的程序，已有的启动设置会自动更新到新路径。
+删除程序前请先取消勾选。若曾在 Windows“启动应用”或任务管理器中禁用本工具，也需在那里恢复启用。
 
 ## 工作方式
 
@@ -50,7 +64,7 @@ Release 中的程序目前未进行代码签名。
 - 不录音、不启动或关闭语音，不注册快捷键，不切换焦点，不自动粘贴。
 - 不修改微信输入法的文件或运行内存，不注入代码。
 - 工具自身不联网，不上传或保存识别文字历史。
-- 仅将当前运行状态和复制次数保存在 `%LOCALAPPDATA%\WeTypeVoiceCapture\status.txt`。
+- 当前运行状态和复制次数保存在 `%LOCALAPPDATA%\WeTypeVoiceCapture\status.txt`；开机启动设置保存在当前用户的 Windows 启动项中。
 
 **正常语音完成后，会替换剪贴板中的原内容。**
 
@@ -75,11 +89,13 @@ Release 中的程序目前未进行代码签名。
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
 ```
 
 这里的执行策略参数只作用于本次脚本进程，不修改系统设置。
 构建使用 Windows 随 .NET Framework 提供的 C# 编译器，不下载依赖。
 生成的单文件程序、ZIP 和校验文件位于 `dist`，不加入源码提交。
+开机启动检查使用独立的临时注册表键，覆盖默认关闭、启用和取消、设置保留、中文和空格路径、移动后更新及其他应用启动项不受影响；不会改动本机真实开机启动项。
 
 本机已安装兼容输入法时，还可以进行只读连接验证：
 
@@ -92,7 +108,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -
 ## 发布
 
 版本号保存在 `VERSION`。GitHub Actions 会在代码提交和拉取请求中构建并检查发布包。
-维护者确认后推送与 `VERSION` 一致的版本标签，例如 `v0.1.1`，工作流才会创建 GitHub Release 并上传下载文件。
+维护者确认后推送与 `VERSION` 一致的版本标签，例如 `v0.2.0`，工作流才会创建 GitHub Release 并上传下载文件。
 普通提交只构建和检查，不会创建 Release；版本标签的发布任务上传的就是同一轮 CI 已检查过的文件。
 
 详见 [发布流程](docs/releasing.md) 和 [验证记录](docs/validation.md)。

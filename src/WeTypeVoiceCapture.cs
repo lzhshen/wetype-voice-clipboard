@@ -7,6 +7,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -158,7 +159,8 @@ namespace WeTypeVoiceCapture
     {
         readonly NotifyIcon tray;
         readonly Icon trayIcon;
-        readonly ToolStripMenuItem stateItem, pauseItem;
+        readonly ToolStripMenuItem stateItem, pauseItem, startupItem;
+        readonly StartupRegistration startup;
         readonly System.Windows.Forms.Timer timer;
         readonly string statusFile;
         Source source;
@@ -173,6 +175,7 @@ namespace WeTypeVoiceCapture
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WeTypeVoiceCapture");
             Directory.CreateDirectory(folder);
             statusFile = Path.Combine(folder, "status.txt");
+            startup = new StartupRegistration(Application.ExecutablePath);
             var menu = new ContextMenuStrip();
             stateItem = new ToolStripMenuItem("正在连接微信输入法") { Enabled = false };
             pauseItem = new ToolStripMenuItem("暂停复制");
@@ -181,15 +184,59 @@ namespace WeTypeVoiceCapture
                 armed = false; candidate = null; previous = null;
                 Status(paused ? "已暂停复制" : "已恢复，等待下一轮语音");
             };
+            startupItem = new ToolStripMenuItem("开机启动");
+            startupItem.Click += ToggleStartup;
+            menu.Opening += delegate { RefreshStartupMenu(); };
             menu.Items.Add(stateItem); menu.Items.Add(pauseItem); menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(startupItem); menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
             using (var stream = typeof(Capture).Assembly.GetManifestResourceStream("WeTypeVoiceCapture.AppIcon.ico"))
             using (var icon = new Icon(stream, SystemInformation.SmallIconSize))
                 trayIcon = (Icon)icon.Clone();
             tray = new NotifyIcon { Icon = trayIcon, Text = "微信语音复制", ContextMenuStrip = menu, Visible = true };
+            try { startup.RefreshExecutablePath(); }
+            catch (Exception ex)
+            {
+                if (!IsStartupError(ex)) throw;
+                tray.ShowBalloonTip(5000, "开机启动设置未更新", "无法更新启动路径，请在托盘菜单中重新设置开机启动。", ToolTipIcon.Warning);
+            }
+            RefreshStartupMenu();
             timer = new System.Windows.Forms.Timer { Interval = 250 };
             timer.Tick += Tick; timer.Start();
             Status("正在连接微信输入法");
+        }
+
+        static bool IsStartupError(Exception error)
+        {
+            return error is IOException || error is UnauthorizedAccessException || error is SecurityException;
+        }
+
+        void RefreshStartupMenu()
+        {
+            try
+            {
+                startupItem.Checked = startup.Enabled;
+                startupItem.Enabled = true;
+                startupItem.Text = "开机启动";
+            }
+            catch (Exception ex)
+            {
+                if (!IsStartupError(ex)) throw;
+                startupItem.Checked = false;
+                startupItem.Enabled = false;
+                startupItem.Text = "开机启动（无法读取设置）";
+            }
+        }
+
+        void ToggleStartup(object sender, EventArgs args)
+        {
+            try { startup.SetEnabled(!startup.Enabled); }
+            catch (Exception ex)
+            {
+                if (!IsStartupError(ex)) throw;
+                MessageBox.Show("无法更改开机启动设置：" + ex.Message, "微信语音复制", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            RefreshStartupMenu();
         }
 
         void Status(string value)
