@@ -19,9 +19,9 @@
 
 从 [Releases](https://github.com/lzhshen/wetype-voice-clipboard/releases) 下载：
 
-- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/WeTypeVoiceCapture-v0.1.1-win-x64.exe)：下载后直接双击运行。
-- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/wetype-voice-clipboard-v0.1.1-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
-- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.1.1/SHA256SUMS.txt)：下载文件的校验值。
+- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/WeTypeVoiceCapture-v0.2.0-win-x64.exe)：下载后直接双击运行。
+- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/wetype-voice-clipboard-v0.2.0-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
+- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.0/SHA256SUMS.txt)：下载文件的校验值。
 
 环境要求：Windows 10/11 x64、.NET Framework 4.8，以及受支持的微信输入法程序。
 无需安装 Python、Node.js、Visual Studio 或额外的语音模型。
@@ -39,7 +39,7 @@ Release 中的程序目前未进行代码签名。
 
 ## 开机启动配置
 
-开机启动功能从 v0.2.0 起提供；上面的 v0.1.1 下载尚不包含此功能。可以从源码构建 v0.2.0，或在 Releases 发布后下载对应版本。
+开机启动功能从 v0.2.0 起提供。
 
 1. 先把 EXE（或解压后的便携包）放到准备长期保留的目录，再运行程序。
 2. 右键托盘图标，点击“开机启动”。菜单中出现勾选，表示已保存启动设置。
