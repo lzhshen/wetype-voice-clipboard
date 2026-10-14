@@ -1,6 +1,24 @@
 # 验证记录
 
-最近验证日期：2026-10-12。
+最近验证日期：2026-10-14。
+
+## v0.2.1 最新转录粘贴修复
+
+- 对原轮询处理代码回放最小序列：旧结果 → 识别中 → 已完成的新结果 → 稳定的新结果。停止处理中状态及标记在两次轮询之间结束，不出现在快照中。旧版保留上一轮剪贴板文字，稳定复现 `STALE PASTE`。
+- 只移除“必须采到停止状态”的限制后，同一回放复制最新结果。原因是 `seenStop` 依赖短暂中间状态，正常完成也可能未被轮询采到。
+- 将轮次处理逻辑提取为正式程序和回放测试共用的 `TranscriptCapture`。修复前，回归检查中的漏采停止状态、下一轮覆盖待复制旧结果两项失败；修复后八组检查全部通过。
+- 回放覆盖正常完成及重复文字、每轮只复制一次、启动与恢复跳过旧结果、取消标记保留、完成与稳定窗口、新一轮覆盖旧结果、空结果与对象更换、剪贴板重试和超时。测试使用虚拟时钟和内存剪贴板，不修改用户剪贴板或启动语音。
+- 本地发行包与开机启动检查通过；发行包真实输入法只读连接验证通过。
+- 本次没有自动操作真人语音或向日葵粘贴，未将状态回放及只读连接检查视为端到端实测。
+
+执行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-transcripts.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -LiveProbe
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
+```
 
 ## v0.2.0 开机启动配置验证
 
