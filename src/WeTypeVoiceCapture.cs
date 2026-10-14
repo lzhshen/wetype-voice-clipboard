@@ -15,15 +15,6 @@ using System.Windows.Forms;
 
 namespace WeTypeVoiceCapture
 {
-    sealed class Frame
-    {
-        public int State;
-        public bool Finished, CancelPending, StopPending;
-        public string Session, Text;
-        public ulong Manager, Engine;
-        public bool Active { get { return State == 1 || State == 2; } }
-    }
-
     sealed class Source : IDisposable
     {
         const ulong TableRva = 0xfeae58;
@@ -163,11 +154,11 @@ namespace WeTypeVoiceCapture
         readonly StartupRegistration startup;
         readonly System.Windows.Forms.Timer timer;
         readonly string statusFile;
+        readonly TranscriptCapture transcripts;
         Source source;
-        Frame previous;
-        bool paused, armed, seenStop, canceled;
-        string candidate, lastStatus;
-        DateTime stableSince, nextAttach, errorSince = DateTime.MinValue;
+        bool paused;
+        string lastStatus;
+        DateTime nextAttach, errorSince = DateTime.MinValue;
         int copyCount;
 
         public Capture()
@@ -175,13 +166,14 @@ namespace WeTypeVoiceCapture
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WeTypeVoiceCapture");
             Directory.CreateDirectory(folder);
             statusFile = Path.Combine(folder, "status.txt");
+            transcripts = new TranscriptCapture(CopyText, Status);
             startup = new StartupRegistration(Application.ExecutablePath);
             var menu = new ContextMenuStrip();
             stateItem = new ToolStripMenuItem("正在连接微信输入法") { Enabled = false };
             pauseItem = new ToolStripMenuItem("暂停复制");
             pauseItem.Click += delegate {
                 paused = !paused; pauseItem.Text = paused ? "恢复复制" : "暂停复制";
-                armed = false; candidate = null; previous = null;
+                transcripts.Reset();
                 Status(paused ? "已暂停复制" : "已恢复，等待下一轮语音");
             };
             startupItem = new ToolStripMenuItem("开机启动");
@@ -249,6 +241,15 @@ namespace WeTypeVoiceCapture
             catch (IOException) { }
         }
 
+        void CopyText(string text)
+        {
+            // Keep the UI thread in STA. Clipboard ownership is managed by WinForms/OLE.
+            var data = new DataObject();
+            data.SetData(DataFormats.UnicodeText, true, text);
+            Clipboard.SetDataObject(data, true, 10, 30);
+            copyCount++;
+        }
+
         void Tick(object sender, EventArgs args)
         {
             if (paused) return;
@@ -262,7 +263,7 @@ namespace WeTypeVoiceCapture
                     foreach (var p in processes) p.Dispose();
                     Status("等待微信输入法启动"); return;
                 }
-                try { source = new Source(processes[0]); previous = null; Status("就绪，等待语音"); }
+                try { source = new Source(processes[0]); transcripts.Reset(); Status("就绪，等待语音"); }
                 catch (NotSupportedException ex) { nextAttach = DateTime.UtcNow.AddSeconds(60); Status(ex.Message); return; }
                 catch (Exception) { Status("连接暂不可用，稍后自动重试"); return; }
             }
@@ -270,57 +271,19 @@ namespace WeTypeVoiceCapture
             {
                 Frame frame = source.Snapshot();
                 errorSince = DateTime.MinValue;
-                if (previous == null || previous.Engine != frame.Engine || previous.Manager != frame.Manager)
-                {
-                    // Completed text left over before startup/resume is never copied.
-                    armed = frame.Active; seenStop = frame.State == 2 || frame.StopPending;
-                    canceled = frame.CancelPending; candidate = null;
-                }
-                else if (frame.Active && (!previous.Active ||
-                    (frame.State == 1 && previous.State == 2) ||
-                    (frame.Session.Length > 0 && previous.Session.Length > 0 && frame.Session != previous.Session)))
-                {
-                    armed = true; seenStop = false; canceled = false; candidate = null;
-                }
-                if (armed)
-                {
-                    seenStop |= frame.State == 2 || frame.StopPending;
-                    canceled |= frame.CancelPending;
-                    if (frame.Active) Status(frame.State == 1 ? "正在识别，等待结束" : "正在等待最终结果");
-                    if (frame.State == 3 && frame.Finished)
-                    {
-                        if (candidate != frame.Text) { candidate = frame.Text; stableSince = DateTime.UtcNow; }
-                        else if ((DateTime.UtcNow - stableSince).TotalMilliseconds >= 600)
-                        {
-                            if (!canceled && seenStop && !String.IsNullOrWhiteSpace(candidate))
-                            {
-                                // Keep the UI thread in STA. Clipboard ownership is managed by WinForms/OLE.
-                                var data = new DataObject();
-                                data.SetData(DataFormats.UnicodeText, true, candidate);
-                                Clipboard.SetDataObject(data, true, 10, 30);
-                                copyCount++; Status("已复制 " + candidate.Length + " 字，等待下一轮");
-                            }
-                            else Status(canceled ? "本轮已取消，未复制" : "本轮没有可复制的最终结果");
-                            armed = false; candidate = null;
-                        }
-                    }
-                    else if (frame.State == 0) { armed = false; candidate = null; Status("本轮结束，未复制"); }
-                }
-                previous = frame;
-                timer.Interval = armed || frame.Active ? 25 : 200;
+                transcripts.Observe(frame, DateTime.UtcNow);
+                timer.Interval = transcripts.Armed || frame.Active ? 25 : 200;
             }
             catch (ExternalException)
             {
-                if ((DateTime.UtcNow - stableSince).TotalSeconds > 8)
-                { armed = false; candidate = null; Status("剪贴板持续被占用，本轮未复制"); }
-                else Status("剪贴板正忙，正在重试");
+                transcripts.ClipboardBusy(DateTime.UtcNow);
             }
             catch (Exception)
             {
                 if (errorSince == DateTime.MinValue) errorSince = DateTime.UtcNow;
                 if ((DateTime.UtcNow - errorSince).TotalSeconds >= 2)
                 {
-                    source.Dispose(); source = null; previous = null; armed = false; candidate = null;
+                    source.Dispose(); source = null; transcripts.Reset();
                     nextAttach = DateTime.UtcNow.AddSeconds(3); timer.Interval = 250;
                     Status("语音连接已变化，正在重新连接");
                 }

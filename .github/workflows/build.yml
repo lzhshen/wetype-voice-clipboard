@@ -28,6 +28,9 @@ jobs:
       - name: Build portable files
         shell: powershell
         run: .\scripts\build.ps1
+      - name: Validate latest transcript and cancellation with frame replay
+        shell: powershell
+        run: .\scripts\test-transcripts.ps1
       - name: Validate downloaded-package layout and startup
         shell: powershell
         run: .\scripts\test-package.ps1
