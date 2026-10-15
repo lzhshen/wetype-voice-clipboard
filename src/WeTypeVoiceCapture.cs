@@ -112,6 +112,7 @@ namespace WeTypeVoiceCapture
 
     sealed class Capture : ApplicationContext
     {
+        readonly string appTitle = "微信语音复制 v" + Application.ProductVersion;
         readonly NotifyIcon tray;
         readonly Icon trayIcon;
         readonly ToolStripMenuItem stateItem, pauseItem, startupItem;
@@ -143,13 +144,15 @@ namespace WeTypeVoiceCapture
             startupItem = new ToolStripMenuItem("开机启动");
             startupItem.Click += ToggleStartup;
             menu.Opening += delegate { RefreshStartupMenu(); };
+            menu.Items.Add(new ToolStripMenuItem(appTitle) { Enabled = false });
+            menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(stateItem); menu.Items.Add(pauseItem); menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(startupItem); menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
             using (var stream = typeof(Capture).Assembly.GetManifestResourceStream("WeTypeVoiceCapture.AppIcon.ico"))
             using (var icon = new Icon(stream, SystemInformation.SmallIconSize))
                 trayIcon = (Icon)icon.Clone();
-            tray = new NotifyIcon { Icon = trayIcon, Text = "微信语音复制", ContextMenuStrip = menu, Visible = true };
+            tray = new NotifyIcon { Icon = trayIcon, Text = appTitle, ContextMenuStrip = menu, Visible = true };
             try { startup.RefreshExecutablePath(); }
             catch (Exception ex)
             {
@@ -199,7 +202,8 @@ namespace WeTypeVoiceCapture
         {
             if (value == lastStatus) return;
             lastStatus = value; stateItem.Text = value;
-            tray.Text = ("微信语音复制：" + value).Substring(0, Math.Min(63, ("微信语音复制：" + value).Length));
+            string tooltip = appTitle + "：" + value;
+            tray.Text = tooltip.Substring(0, Math.Min(63, tooltip.Length));
             // Only operational status is saved; transcripts and audio are never logged.
             try { File.WriteAllText(statusFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + value + Environment.NewLine + "本次运行已复制次数：" + copyCount, new UTF8Encoding(false)); }
             catch (IOException) { }
