@@ -20,9 +20,13 @@ namespace WeTypeVoiceCapture
         static extern uint SendInput(uint count, Input[] inputs, int size);
         [DllImport("user32.dll")]
         static extern short GetAsyncKeyState(int key);
+        [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+        [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint thread);
+        [DllImport("user32.dll")] static extern uint MapVirtualKeyEx(uint key, uint mode, IntPtr layout);
 
-        static Input KeyEvent(ushort key, bool up)
-        { return new Input { Type = 1, Data = new InputData { Key = new Key { Code = key, Flags = up ? 2u : 0u } } }; }
+        static Input KeyEvent(ushort key, ushort scan, bool up)
+        { return new Input { Type = 1, Data = new InputData { Key = new Key { Code = key, Scan = scan, Flags = 8u | (up ? 2u : 0u) } } }; }
 
         public static bool Send(Func<bool> stillSafe)
         {
@@ -35,10 +39,18 @@ namespace WeTypeVoiceCapture
             // Never release keys held by the user, or turn Ctrl+V into another shortcut.
             foreach (int key in new[] { 0x10, 0x11, 0x12, 0x5b, 0x5c, 0x56 })
                 if (down(key)) return false;
+            uint process;
+            IntPtr layout = GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow(), out process));
+            uint scan = MapVirtualKeyEx(0x56, 0, layout);
+            if (scan == 0 || scan > 0xff) return false;
+            ushort vScan = (ushort)scan;
             if (!stillSafe()) return false;
-            uint sent = send(new[] { KeyEvent(0x11, false), KeyEvent(0x56, false), KeyEvent(0x56, true), KeyEvent(0x11, true) });
+            // Remote clients can forward scan codes rather than virtual keys.
+            // VK-only SendInput produces scan=0 in real low-level events; use
+            // physical left Ctrl and the foreground layout's V scan code.
+            uint sent = send(new[] { KeyEvent(0x11, 0x1d, false), KeyEvent(0x56, vScan, false), KeyEvent(0x56, vScan, true), KeyEvent(0x11, 0x1d, true) });
             // Only releases are permitted after a partial insertion; never send V down again.
-            if (sent > 0 && sent < 4) send(new[] { KeyEvent(0x56, true), KeyEvent(0x11, true) });
+            if (sent > 0 && sent < 4) send(new[] { KeyEvent(0x56, vScan, true), KeyEvent(0x11, 0x1d, true) });
             return sent == 4;
         }
     }

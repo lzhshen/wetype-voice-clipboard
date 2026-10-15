@@ -187,7 +187,9 @@ namespace WeTypeVoiceCapture
             Assert(PasteKeyboard.Send(delegate { return true; }, delegate { return false; }, send), "Complete key sequence must succeed.");
             var keys = batches[0];
             Assert(keys.Length == 4 && keys[0].Data.Key.Code == 0x11 && keys[1].Data.Key.Code == 0x56 && keys[2].Data.Key.Code == 0x56 && keys[3].Data.Key.Code == 0x11 &&
-                keys[0].Data.Key.Flags == 0 && keys[1].Data.Key.Flags == 0 && keys[2].Data.Key.Flags == 2 && keys[3].Data.Key.Flags == 2, "Ctrl+V must have balanced down/up events.");
+                keys[0].Data.Key.Flags == 8 && keys[1].Data.Key.Flags == 8 && keys[2].Data.Key.Flags == 10 && keys[3].Data.Key.Flags == 10 &&
+                keys[0].Data.Key.Scan == 0x1d && keys[3].Data.Key.Scan == 0x1d && keys[1].Data.Key.Scan != 0 && keys[1].Data.Key.Scan == keys[2].Data.Key.Scan,
+                "Ctrl+V must have physical scan codes and balanced down/up events.");
             batches.Clear();
             Assert(!PasteKeyboard.Send(delegate { return false; }, delegate { return false; }, send) && batches.Count == 0, "Last-moment foreground changes must block sending.");
             foreach (int held in new[] { 0x10, 0x11, 0x12, 0x5b, 0x5c, 0x56 })
@@ -197,7 +199,7 @@ namespace WeTypeVoiceCapture
                 batches.Clear();
                 bool result = PasteKeyboard.Send(delegate { return true; }, delegate { return false; }, delegate(PasteKeyboard.Input[] batch) { batches.Add(batch); return partial; });
                 Assert(!result && batches.Count == (partial == 0 ? 1 : 2), "Partial send must not become a second paste.");
-                if (partial > 0) foreach (var input in batches[1]) Assert(input.Data.Key.Flags == 2, "Cleanup must contain only key releases.");
+                if (partial > 0) foreach (var input in batches[1]) Assert(input.Data.Key.Flags == 10 && input.Data.Key.Scan != 0, "Cleanup must contain only physical key releases.");
             }
         }
 
