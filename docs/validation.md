@@ -11,7 +11,12 @@
 - 本地构建及发行包架构、版本、校验值、图标、ZIP/EXE 一致性通过；包内程序的只读探针成功连接真实微信输入法 3.0.0.34。
 - 只读窗口枚举确认当前 `AweSun` 的远控窗口使用配对的 `FlutterMultiWindow` 与 `ORAY_FLUTTER_VIEW_CONTAINER`，主界面使用 `FLUTTER_RUNNER_WIN32_WINDOW`。正式程序的只读探针返回 `monitoring_available=True`、`remote_foreground=True`。没有把能注册监听等同于实际事件处理已通过。
 - 17:19 启动本地 v0.3.0 测试构建，状态确认开关默认关闭、复制/粘贴触发计数均为 0。Windows 界面检查工具初始化失败（无法写入 kernel assets，系统找不到指定路径），尚未通过该工具验证菜单。
-- 已请求用户验证实际远端自动填入一次、切走再切回取消但仍可手动粘贴、以及本机无额外重复输入。结果待反馈；最终 CI 结果待记录。
+- 初始实现提交 `2da56b6` 的两轮 Windows CI 通过，含原有 18 组检查、新增 13 组回放检查、发行包及启动配置；下载该 CI 产物后，本地再次通过包检查及真实输入法只读连接。实际重复启动也确认只保留一个实例。
+- 用户首次远端测试失败：自动触发后出现单独 `v` 和输入法菜单（用户提供截图）。计数中的 2 次触发不能当作成功填入。17:24 关闭自动粘贴并重启为仅复制模式，草稿 PR 保持未合并。
+- 为缩小差异，新增 `test-keyboard-transport.ps1 -DesktopInput`：在专用运行器自己的空白测试窗口发送正式 `PasteKeyboard` 的按键，用 Windows 低层事件监听器核对真实事件。提交 `986e3e6` 的 [原生复现运行](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38713214979) 明确失败：四个 Ctrl/V 事件的 `scan` 都是 `00`，包括 Ctrl 的 `key=A2`。这证明模拟按键信息与物理按键有差异，但尚不能单独证明向日葵内部如何处理该差异。
+- 提交 `91fa7d2` 改为物理左 Ctrl 扫描码及前台键盘布局的 V 扫描码，使用 `KEYEVENTF_SCANCODE`，保持原来的发送时序、窗口保护和每轮次数不变。[修正后的 PR CI](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38713497443) 与 [分支 CI](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38713491930) 全部通过（32 组转录、剪贴板、回放和原生按键检查，另有包及启动配置检查）。原生事件变为 Ctrl `scan=1D`、V `scan=2F`，按下/释放顺序完整。
+- 下载修正后的 CI 包后，本地再次通过包校验及真实输入法只读连接。17:33 切换到该 CI 构建，保持自动粘贴关闭，并请求用户重新开启后复测。真实远端是否填入、切换取消和本机行为仍待反馈，不以原生扫描码修正代替向日葵验收。
+- 临时只读 Ctrl/V 观测在 2 分钟后自行退出，未收集到事件，没有记录其他按键或正文。它不改变向日葵设置。
 
 ## v0.2.4 剪贴板发布时序修复
 

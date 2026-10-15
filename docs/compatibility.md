@@ -58,7 +58,7 @@ v0.2.4 起，`ClipboardTextWriter` 先准备完整的 `CF_UNICODETEXT` 内存，
 
 `WindowsPasteDesktop` 核对 `AweSun` 进程、可见前台窗口及 `FlutterMultiWindow` / `ORAY_FLUTTER_VIEW_CONTAINER` 配对结构（同进程、同标题）。主界面 `FLUTTER_RUNNER_WIN32_WINDOW` 不放行。该识别来自当前安装客户端的只读窗口枚举，不宣称兼容所有向日葵版本；窗口标题仅在内存中比较。
 
-开启后通过进程外 `SetWinEventHook` 监听前台及桌面切换，关闭时解除监听。切走再切回也取消，发送前再次核对窗口、剪贴板 Unicode 正文/序列号和最后输入时间；按键已按下时不发送。模拟 Ctrl+V 的结构按 x64 INPUT 布局定义，部分插入仅补释放，不再次按 V，不发送 Enter。
+开启后通过进程外 `SetWinEventHook` 监听前台及桌面切换，关闭时解除监听。切走再切回也取消，发送前再次核对窗口、剪贴板 Unicode 正文/序列号和最后输入时间；按键已按下时不发送。模拟 Ctrl+V 的结构按 x64 INPUT 布局定义，使用物理左 Ctrl 扫描码和前台键盘布局对应的 V 扫描码（`KEYEVENTF_SCANCODE`）；部分插入仅补释放，不再次按 V，不发送 Enter。原 VK-only 方式在真实低层事件中产生 `scan=0`，新增原生键盘检查能捕获这一差异。
 
 远程同步没有可用的确认接口，本机固定等待不能保证任意网络延迟下的远端就绪。状态区分“复制成功”与“已触发粘贴”；不把 Windows 接受输入事件等同于远端内容成功。目标远端的文本框及插入点由用户选择，本程序不读取远端控件树。
 
