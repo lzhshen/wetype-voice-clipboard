@@ -19,6 +19,7 @@ namespace WeTypeVoiceCapture
         bool IsCurrent(RemotePasteTarget target);
         uint? InputStamp { get; }
         bool Pasting { get; }
+        string StopReason { get; }
         void CancelPaste();
         PasteAttempt Paste(RemotePasteTarget target, string text, uint inputStamp);
     }
@@ -95,10 +96,11 @@ namespace WeTypeVoiceCapture
             if (now > deadline) { CancelWithStatus("自动粘贴等待超时"); return; }
             PasteAttempt result = desktop.Paste(target, text, inputStamp);
             if (result == PasteAttempt.ClipboardBusy || result == PasteAttempt.Pending) return;
+            string reason = desktop.StopReason;
             Cancel(); // Even a partial/failed SendInput is never attempted twice.
             if (result == PasteAttempt.Sent) TriggeredCount++;
             status(result == PasteAttempt.Sent ? "已触发向日葵粘贴，等待下一轮" :
-                result == PasteAttempt.Unsafe ? "已复制；自动粘贴已取消，请手动粘贴" :
+                result == PasteAttempt.Unsafe ? "已复制；" + (String.IsNullOrEmpty(reason) ? "自动粘贴已取消" : reason) + "，请手动粘贴" :
                 "已复制；粘贴触发未确认，请检查输入框");
         }
     }

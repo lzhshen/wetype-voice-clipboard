@@ -34,7 +34,8 @@ namespace WeTypeVoiceCapture
             return new PasteKeySequence(scan <= 0xff ? (ushort)scan : (ushort)0, guard.Marker,
                 delegate(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; },
                 delegate(Input[] inputs) { return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))); },
-                guard.Start, guard.Stop, delegate { return guard.Interrupted; }, guard.MayRelease);
+                guard.Start, guard.Stop, delegate { return guard.Interrupted; }, guard.MayRelease,
+                delegate { return guard.Interruption; });
         }
     }
 
@@ -57,6 +58,7 @@ namespace WeTypeVoiceCapture
         bool userControl, userV;
         public readonly UIntPtr Marker = (UIntPtr)(0x5756430000000000UL | (uint)Process.GetCurrentProcess().Id);
         public bool Interrupted { get; private set; }
+        public string Interruption { get; private set; }
         public PasteInputGuard() { keyboardCallback = OnKeyboard; mouseCallback = OnMouse; }
         IntPtr OnKeyboard(int code, IntPtr message, IntPtr data)
         {
@@ -65,6 +67,7 @@ namespace WeTypeVoiceCapture
                 var input = (KeyboardEvent)Marshal.PtrToStructure(data, typeof(KeyboardEvent));
                 if (input.Extra != Marker)
                 {
+                    if (!Interrupted) Interruption = (input.Flags & 0x10) != 0 ? "检测到其他程序的模拟按键" : "检测到键盘操作";
                     Interrupted = true;
                     if (input.Code == 0xa2 || input.Code == 0x11) userControl = (input.Flags & 0x80) == 0;
                     if (input.Code == 0x56) userV = (input.Flags & 0x80) == 0;
@@ -74,7 +77,11 @@ namespace WeTypeVoiceCapture
         }
         IntPtr OnMouse(int code, IntPtr message, IntPtr data)
         {
-            if (code >= 0 && ((MouseEvent)Marshal.PtrToStructure(data, typeof(MouseEvent))).Extra != Marker) Interrupted = true;
+            if (code >= 0 && ((MouseEvent)Marshal.PtrToStructure(data, typeof(MouseEvent))).Extra != Marker)
+            {
+                if (!Interrupted) Interruption = "检测到鼠标操作";
+                Interrupted = true;
+            }
             return CallNextHookEx(mouse, code, message, data);
         }
         public bool MayRelease(int key) { return key == 0xa2 ? !userControl : !userV; }
@@ -125,6 +132,7 @@ namespace WeTypeVoiceCapture
         GCHandle callbackRoot;
         PasteKeySequence keys;
         uint pasteSequence;
+        public string StopReason { get; private set; }
         public bool Pasting { get { return keys != null && keys.Running; } }
         public void CancelPaste() { if (keys != null) keys.Dispose(); keys = null; }
 
@@ -221,32 +229,49 @@ namespace WeTypeVoiceCapture
 
         public PasteAttempt Paste(RemotePasteTarget target, string text, uint inputStamp)
         {
+            StopReason = null;
             if (keys != null)
-                return keys.Step(DateTime.UtcNow, delegate { return IsCurrent(target) && GetClipboardSequenceNumber() == pasteSequence; });
+                return Advance(delegate { return StillSafe(target, pasteSequence); });
             RemotePasteTarget current = CaptureTarget();
             if (current == null || current.Window != target.Window || current.ProcessId != target.ProcessId ||
-                current.Title != target.Title || InputStamp != inputStamp) return PasteAttempt.Unsafe;
+                current.Title != target.Title) return Stop("远控窗口已变化");
+            if (InputStamp != inputStamp) return Stop("检测到新操作");
             uint sequence;
             if (!OpenClipboard(IntPtr.Zero)) return PasteAttempt.ClipboardBusy;
             try
             {
                 sequence = GetClipboardSequenceNumber();
                 IntPtr memory = GetClipboardData(13);
-                if (memory == IntPtr.Zero || GlobalSize(memory).ToUInt64() < ((ulong)text.Length + 1) * 2) return PasteAttempt.Unsafe;
+                if (memory == IntPtr.Zero || GlobalSize(memory).ToUInt64() < ((ulong)text.Length + 1) * 2) return Stop("剪贴板内容已变化");
                 IntPtr buffer = GlobalLock(memory);
-                if (buffer == IntPtr.Zero) return PasteAttempt.Unsafe;
+                if (buffer == IntPtr.Zero) return Stop("剪贴板暂时无法读取");
                 try
                 {
-                    if (Marshal.PtrToStringUni(buffer, text.Length + 1) != text + "\0") return PasteAttempt.Unsafe;
+                    if (Marshal.PtrToStringUni(buffer, text.Length + 1) != text + "\0") return Stop("剪贴板内容已变化");
                 }
                 finally { GlobalUnlock(memory); }
             }
             finally { CloseClipboard(); }
             pasteSequence = sequence;
             keys = PasteKeyboard.Create();
-            return keys.Step(DateTime.UtcNow, delegate {
-                return IsCurrent(target) && InputStamp == inputStamp && GetClipboardSequenceNumber() == sequence;
+            return Advance(delegate {
+                if (InputStamp != inputStamp) { StopReason = "检测到新操作"; return false; }
+                return StillSafe(target, sequence);
             });
+        }
+
+        PasteAttempt Stop(string reason) { StopReason = reason; return PasteAttempt.Unsafe; }
+        bool StillSafe(RemotePasteTarget target, uint sequence)
+        {
+            if (!IsCurrent(target)) { StopReason = "远控窗口已变化"; return false; }
+            if (GetClipboardSequenceNumber() != sequence) { StopReason = "剪贴板已被重新同步或更新"; return false; }
+            return true;
+        }
+        PasteAttempt Advance(Func<bool> stillSafe)
+        {
+            PasteAttempt result = keys.Step(DateTime.UtcNow, stillSafe);
+            StopReason = StopReason ?? keys.StopReason;
+            return result;
         }
 
         public void Dispose() { CancelPaste(); StopMonitoring(); }

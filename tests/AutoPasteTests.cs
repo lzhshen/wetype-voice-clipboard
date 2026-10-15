@@ -15,6 +15,7 @@ namespace WeTypeVoiceCapture
             public readonly List<string> Pastes = new List<string>();
             public int Captures, Attempts;
             public bool Pasting { get; private set; }
+            public string StopReason { get; set; }
             public void CancelPaste() { Pasting = false; }
             public RemotePasteTarget CaptureTarget() { Captures++; return Current; }
             public bool IsCurrent(RemotePasteTarget target)
@@ -251,7 +252,7 @@ namespace WeTypeVoiceCapture
             var noGuard = new KeysReplay(); noGuard.GuardAvailable = false;
             Assert(noGuard.Step(0) == PasteAttempt.Unsafe && noGuard.Batches.Count == 0, "Unavailable input guard must block all synthesis.");
             var lostCtrl = new KeysReplay(); lostCtrl.Step(0); lostCtrl.Held.Remove(0x11); lostCtrl.Step(100);
-            Assert(lostCtrl.VPresses == 0, "Do not send bare V if Ctrl did not become held.");
+            Assert(lostCtrl.VPresses == 0 && lostCtrl.Sequence.StopReason == "Ctrl 按键状态未保持", "Do not send bare V if Ctrl did not become held; retain the specific cancellation reason.");
             var user = new KeysReplay(); user.Step(0); user.Interrupted = true; user.UserTookControl = true; user.Step(50);
             Assert(user.Held.Contains(0x11) && user.VPresses == 0, "Do not release Ctrl newly held by the user during synthesis.");
             var failedCtrl = new KeysReplay(); failedCtrl.NextSendCount = 0;
