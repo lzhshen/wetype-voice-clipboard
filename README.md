@@ -11,17 +11,19 @@
 
 适用于通过向日葵等远程控制软件操作另一台电脑时，语音已经识别出来，却没有进入宿主机剪贴板的情况。
 
-**v0.2.3 适配微信输入法 Windows 2.1.4.6 和 3.0.0.34 的已验证程序文件。**
+**v0.2.4 适配微信输入法 Windows 2.1.4.6 和 3.0.0.34 的已验证程序文件。**
 工具会核对程序文件的 SHA-256；文件不匹配时停止读取，不会尝试猜测内部位置。
 这是非官方兼容工具，与腾讯或微信没有隶属关系。
+
+v0.2.4 将剪贴板纯文本改为一次性写入，避免 OLE 分阶段写入时首次变化通知遇到占用。自动检查与远端验收结果见 [验证记录](docs/validation.md)。
 
 ## 下载使用
 
 从 [Releases](https://github.com/lzhshen/wetype-voice-clipboard/releases) 下载：
 
-- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.3/WeTypeVoiceCapture-v0.2.3-win-x64.exe)：下载后直接双击运行。
-- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.3/wetype-voice-clipboard-v0.2.3-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
-- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.3/SHA256SUMS.txt)：下载文件的校验值。
+- [单文件 EXE](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.4/WeTypeVoiceCapture-v0.2.4-win-x64.exe)：下载后直接双击运行。
+- [ZIP 便携包](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.4/wetype-voice-clipboard-v0.2.4-win-x64.zip)：解压后运行 `WeTypeVoiceCapture.exe`，附使用说明和许可证。
+- [SHA256SUMS.txt](https://github.com/lzhshen/wetype-voice-clipboard/releases/download/v0.2.4/SHA256SUMS.txt)：下载文件的校验值。
 
 环境要求：Windows 10/11 x64、.NET Framework 4.8，以及受支持的微信输入法程序。
 无需安装 Python、Node.js、Visual Studio 或额外的语音模型。
@@ -30,7 +32,7 @@ Release 中的程序目前未进行代码签名。
 1. 启动微信输入法，再双击下载的程序。
 2. 工具以蓝色叠层语音气泡图标在系统托盘运行，没有主窗口。鼠标悬停可以查看工具版本号和当前状态，右键菜单顶部也会显示工具版本号。
 3. 照常使用微信输入法的语音快捷键，例如 Alt+Q 开始，再按 Alt+Q 结束。
-4. 等待约 1～2 秒后，在本机或远程电脑的输入框粘贴。
+4. 等待语音处理完成、托盘状态显示“已复制”（通常约 1～2 秒）后，在本机或远程电脑的输入框粘贴。处理完成前粘贴，仍会得到原剪贴板内容。
 
 通过向日葵远程粘贴时，需保持原有的跨设备剪贴板通路可用；工具本身只写入 Windows 剪贴板。
 
@@ -94,6 +96,7 @@ Release 中的程序目前未进行代码签名。
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-transcripts.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-clipboard.ps1 -DesktopClipboard
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
 ```
@@ -102,6 +105,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
 构建使用 Windows 随 .NET Framework 提供的 C# 编译器，不下载依赖。
 生成的单文件程序、ZIP 和校验文件位于 `dist`，不加入源码提交。
 转录回放检查直接使用正式程序中的快照读取和轮次处理逻辑，覆盖两版内存结构、短字符串与中文长字符串、快照变化、无效数据、漏采停止状态、连续转录、取消、结果稳定、启动与恢复、对象变化以及剪贴板占用；不操作真实语音或剪贴板。
+剪贴板检查调用正式写入器和真实通知接口，覆盖首次通知可读、一次完整通知、中文/长文本/表情/换行、连续相同文本、占用重试、无效文本及所有者退出后内容保留。它会短暂写入运行所在桌面的剪贴板，必须显式传入 `-DesktopClipboard`；原内容在内存中保存并恢复，检测到外部更新则保留新内容。运行时请暂停其他复制操作。CI 在专用 Windows 运行器上执行此检查。
 开机启动检查使用独立的临时注册表键，覆盖默认关闭、启用和取消、设置保留、中文和空格路径、移动后更新及其他应用启动项不受影响；不会改动本机真实开机启动项。
 
 本机已安装兼容输入法时，还可以进行只读连接验证：
@@ -115,7 +119,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-package.ps1 -
 ## 发布
 
 版本号保存在 `VERSION`。GitHub Actions 会在代码提交和拉取请求中构建并检查发布包。
-维护者确认后推送与 `VERSION` 一致的版本标签，例如 `v0.2.3`，工作流才会创建 GitHub Release 并上传下载文件。
+维护者确认后推送与 `VERSION` 一致的版本标签，例如 `v0.2.4`，工作流才会创建 GitHub Release 并上传下载文件。
 普通提交只构建和检查，不会创建 Release；版本标签的发布任务上传的就是同一轮 CI 已检查过的文件。
 
 详见 [发布流程](docs/releasing.md) 和 [验证记录](docs/validation.md)。
