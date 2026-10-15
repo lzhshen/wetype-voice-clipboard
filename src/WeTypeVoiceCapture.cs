@@ -120,6 +120,7 @@ namespace WeTypeVoiceCapture
         readonly System.Windows.Forms.Timer timer;
         readonly string statusFile;
         readonly TranscriptCapture transcripts;
+        readonly ClipboardTextWriter clipboard = new ClipboardTextWriter();
         Source source;
         bool paused;
         string lastStatus;
@@ -211,10 +212,7 @@ namespace WeTypeVoiceCapture
 
         void CopyText(string text)
         {
-            // Keep the UI thread in STA. Clipboard ownership is managed by WinForms/OLE.
-            var data = new DataObject();
-            data.SetData(DataFormats.UnicodeText, true, text);
-            Clipboard.SetDataObject(data, true, 10, 30);
+            clipboard.SetText(text);
             copyCount++;
         }
 
@@ -261,6 +259,7 @@ namespace WeTypeVoiceCapture
         {
             timer.Stop(); timer.Dispose();
             if (source != null) source.Dispose();
+            clipboard.Dispose();
             Status("已退出"); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
             base.ExitThreadCore();
         }

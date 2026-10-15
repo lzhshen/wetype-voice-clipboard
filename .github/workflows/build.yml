@@ -31,6 +31,9 @@ jobs:
       - name: Validate latest transcript and cancellation with frame replay
         shell: powershell
         run: .\scripts\test-transcripts.ps1
+      - name: Validate clipboard publication and contention on the hosted desktop
+        shell: powershell
+        run: .\scripts\test-clipboard.ps1 -DesktopClipboard
       - name: Validate downloaded-package layout and startup
         shell: powershell
         run: .\scripts\test-package.ps1
