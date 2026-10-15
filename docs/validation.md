@@ -21,6 +21,7 @@
 - 新增接收窗口时序断言：在测试窗口实际处理 V 的消息时读取 Ctrl 异步按下状态。提交 `6d1b89d` 的[复现 CI](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38715655117) 明确失败：扫描码正确，但 `Receiver async Ctrl state while processing V: False`。这证明原先一次性发送并释放的实现不能保证异步接收方处理 V 时 Ctrl 仍按下；未直接观测向日葵内部事件处理。
 - 提交 `3db33d4` 将 Ctrl 按下、V 按下/释放、Ctrl 释放拆为非阻塞的三个阶段，阶段间约 100ms，保留一次 V、前台取消及剪贴板核对。短时输入监听区分自发按键与用户操作，取消、部分发送和失败均清理本程序仍拥有的按键。[修正后的 CI](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38716580924) 全部通过：34 组转录、剪贴板、自动粘贴和原生按键检查，另有包与启动配置检查；接收 V 时 Ctrl 状态变为 `True`，四个物理按下/释放事件完整。新增回放还覆盖持有 Ctrl 时切换窗口、外部键鼠操作、用户自行按住 Ctrl、部分发送失败和重复 Tick 不重发。
 - 当前仍未获得分阶段发送版本的真实远端验收；远端填入、切走再切回取消，以及本机无额外重复输入需继续确认，草稿 PR 不据此合并或发布。
+- 提交 `62af076` 进一步检查完成后的 Ctrl/V 实际状态，[PR CI](https://github.com/lzhshen/wetype-voice-clipboard/actions/runs/38717032494) 全部通过：接收 V 时 Ctrl 为按下，结束后两键均已释放。下载该 CI 包，本地包校验与真实 3.0.0.34 只读连接通过；确认语音已完成后于 18:01:27 切换运行实例，启动后成功连接且没有重复复制旧结果。自动粘贴保持关闭，已请求用户开启后复测。运行 EXE 的 SHA-256 为 `2a4dbc52c58ad4ea2f47b353ffc0491f18a3ad78917f80e1d373de26a1397bde`。
 
 ## v0.2.4 剪贴板发布时序修复
 
