@@ -37,6 +37,9 @@ jobs:
       - name: Validate remote auto-paste guards and existing clipboard behavior
         shell: powershell
         run: .\scripts\test-autopaste.ps1
+      - name: Validate native keyboard transport on the hosted test window
+        shell: powershell
+        run: .\scripts\test-keyboard-transport.ps1 -DesktopInput
       - name: Validate downloaded-package layout and startup
         shell: powershell
         run: .\scripts\test-package.ps1
