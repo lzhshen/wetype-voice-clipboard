@@ -17,3 +17,11 @@ $captureTestExe = Join-Path $captureTestDirectory 'TranscriptCaptureTests.exe'
 if ($LASTEXITCODE -ne 0) { throw 'Transcript test compilation failed.' }
 & $captureTestExe
 if ($LASTEXITCODE -ne 0) { throw 'Transcript regression tests failed.' }
+
+$captureSnapshotExe = Join-Path $captureTestDirectory 'VoiceSnapshotReaderTests.exe'
+& $captureCompiler /nologo /target:exe /platform:x64 /optimize+ /warnaserror+ /codepage:65001 "/out:$captureSnapshotExe" `
+    (Join-Path $captureRoot 'src\TranscriptCapture.cs') (Join-Path $captureRoot 'src\VoiceSnapshotReader.cs') `
+    (Join-Path $captureRoot 'tests\VoiceSnapshotReaderTests.cs')
+if ($LASTEXITCODE -ne 0) { throw 'Voice snapshot test compilation failed.' }
+& $captureSnapshotExe
+if ($LASTEXITCODE -ne 0) { throw 'Voice snapshot regression tests failed.' }

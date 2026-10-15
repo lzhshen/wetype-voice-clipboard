@@ -96,6 +96,10 @@ if (-not $captureProbe.WaitForExit(15000)) {
 }
 $captureProbe.Refresh()
 $captureReport = Get-Content -LiteralPath $captureProbeReport -Raw
+if ($captureReport -match '(?m)^source_valid=true\r?$' -and
+    $captureReport -notmatch '(?m)^source_version=(2\.1\.4\.6|3\.0\.0\.34)\r?$') {
+    throw 'Successful source probe did not identify a supported input-method version.'
+}
 if ($LiveProbe) {
     if ($captureProbe.ExitCode -ne 0 -or $captureReport -notmatch '(?m)^source_valid=true\r?$') {
         throw "Packaged live probe failed: $captureReport"

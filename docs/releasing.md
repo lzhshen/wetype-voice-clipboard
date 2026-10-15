@@ -21,8 +21,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\test-startup.ps1
 
 ```text
 dist/
-  WeTypeVoiceCapture-v0.2.1-win-x64.exe
-  wetype-voice-clipboard-v0.2.1-win-x64.zip
+  WeTypeVoiceCapture-v0.2.2-win-x64.exe
+  wetype-voice-clipboard-v0.2.2-win-x64.zip
   SHA256SUMS.txt
 ```
 
@@ -35,14 +35,14 @@ ZIP 中只包含 `WeTypeVoiceCapture.exe`、`README.txt` 和 `LICENSE.txt`。
 发布前由维护者审阅源码、兼容范围、验证结果、许可证和待发布的版本。
 
 确认后，将审阅过的内容提交到 `main` 并推送。
-等 GitHub Actions 的分支构建通过，再创建与 `VERSION` 一致的标签，例如 `v0.2.1`，并推送该标签。
+等 GitHub Actions 的分支构建通过，再创建与 `VERSION` 一致的标签，例如 `v0.2.2`，并推送该标签。
 
 ## GitHub 自动发布
 
 `.github/workflows/build.yml` 会：
 
 1. 使用 Windows 托管运行器编译 EXE 并创建 ZIP、校验文件。
-2. 回放语音轮次，验证漏采停止状态时仍复制最新结果及取消等边界；检查实际 EXE 的架构和版本、ZIP 内容以及解压后的程序启动，并在隔离的注册表位置验证开机启动配置。
+2. 回放语音轮次，验证漏采停止状态时仍复制最新结果及取消等边界；使用两版独立内存样本验证正式快照读取器；检查实际 EXE 的架构和版本、ZIP 内容以及解压后的程序启动，并在隔离的注册表位置验证开机启动配置。
 3. 将通过检查的文件保存为构建产物。
 4. 仅当推送 `v` 开头、且与 `VERSION` 一致的标签时，创建 Release。
 5. 发布任务下载刚刚检查过的产物，复核校验值后上传，不重新编译另一份程序。
