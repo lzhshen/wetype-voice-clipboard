@@ -11,13 +11,15 @@ namespace WeTypeVoiceCapture
         { Window = window; ProcessId = processId; Title = title; }
     }
 
-    enum PasteAttempt { Sent, ClipboardBusy, Unsafe, Failed }
+    enum PasteAttempt { Sent, ClipboardBusy, Unsafe, Failed, Pending }
 
     interface IPasteDesktop
     {
         RemotePasteTarget CaptureTarget();
         bool IsCurrent(RemotePasteTarget target);
         uint? InputStamp { get; }
+        bool Pasting { get; }
+        void CancelPaste();
         PasteAttempt Paste(RemotePasteTarget target, string text, uint inputStamp);
     }
 
@@ -43,7 +45,7 @@ namespace WeTypeVoiceCapture
         public void SetEnabled(bool value) { Cancel(); enabled = value; }
 
         public void Cancel()
-        { target = null; text = null; awaitingCopy = false; }
+        { desktop.CancelPaste(); target = null; text = null; awaitingCopy = false; }
 
         public void BeginRound(bool observedStart)
         {
@@ -78,7 +80,7 @@ namespace WeTypeVoiceCapture
         {
             bool wasPending = Pending;
             Cancel();
-            if (wasPending) status("已复制；" + reason + "，请手动粘贴");
+            if (wasPending) status("已复制；" + reason + "，自动粘贴已停止");
         }
 
         public void Tick(DateTime now)
@@ -88,11 +90,11 @@ namespace WeTypeVoiceCapture
             if (!Pending) return;
             // Any new user input after copying also cancels: this catches a
             // manual paste, a click into another field, and modifier presses.
-            if (desktop.InputStamp != inputStamp) { CancelWithStatus("检测到新操作"); return; }
+            if (!desktop.Pasting && desktop.InputStamp != inputStamp) { CancelWithStatus("检测到新操作"); return; }
             if (now < due) return;
             if (now > deadline) { CancelWithStatus("自动粘贴等待超时"); return; }
             PasteAttempt result = desktop.Paste(target, text, inputStamp);
-            if (result == PasteAttempt.ClipboardBusy) return;
+            if (result == PasteAttempt.ClipboardBusy || result == PasteAttempt.Pending) return;
             Cancel(); // Even a partial/failed SendInput is never attempted twice.
             if (result == PasteAttempt.Sent) TriggeredCount++;
             status(result == PasteAttempt.Sent ? "已触发向日葵粘贴，等待下一轮" :

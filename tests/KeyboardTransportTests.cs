@@ -45,6 +45,7 @@ namespace WeTypeVoiceCapture
         {
             if (args.Length != 1 || args[0] != "--desktop-input") return 2;
             int result = 1, step = 0;
+            PasteKeySequence keys = null;
             using (var form = new Receiver { Text = "Voice clipboard keyboard transport test", Width = 420, Height = 160 })
             using (var timer = new Timer { Interval = 500 })
             {
@@ -57,9 +58,16 @@ namespace WeTypeVoiceCapture
                 timer.Tick += delegate {
                     if (step++ == 0)
                     {
+                        keys = PasteKeyboard.Create(); timer.Interval = 25;
                         if (hook == IntPtr.Zero || GetForegroundWindow() != target ||
-                            !PasteKeyboard.Send(delegate { return GetForegroundWindow() == target; }))
+                            keys.Step(DateTime.UtcNow, delegate { return GetForegroundWindow() == target; }) != PasteAttempt.Pending)
                         { Console.Error.WriteLine("FAIL: own test window or input hook unavailable; no unguarded input sent."); form.Close(); }
+                    }
+                    else if (step == 2)
+                    {
+                        PasteAttempt sent = keys.Step(DateTime.UtcNow, delegate { return GetForegroundWindow() == target; });
+                        if (sent == PasteAttempt.Pending) step = 1;
+                        else if (sent != PasteAttempt.Sent) { Console.Error.WriteLine("FAIL: staged key sequence: " + sent); form.Close(); }
                     }
                     else
                     {
@@ -73,7 +81,7 @@ namespace WeTypeVoiceCapture
                     }
                 };
                 try { Application.Run(form); }
-                finally { if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook); }
+                finally { if (keys != null) keys.Dispose(); if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook); }
             }
             return result;
         }

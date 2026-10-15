@@ -25,33 +25,73 @@ namespace WeTypeVoiceCapture
         [DllImport("user32.dll")] static extern IntPtr GetKeyboardLayout(uint thread);
         [DllImport("user32.dll")] static extern uint MapVirtualKeyEx(uint key, uint mode, IntPtr layout);
 
-        static Input KeyEvent(ushort key, ushort scan, bool up)
-        { return new Input { Type = 1, Data = new InputData { Key = new Key { Code = key, Scan = scan, Flags = 8u | (up ? 2u : 0u) } } }; }
-
-        public static bool Send(Func<bool> stillSafe)
+        public static PasteKeySequence Create()
         {
-            return Send(stillSafe, delegate(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; },
-                delegate(Input[] inputs) { return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))); });
-        }
-
-        internal static bool Send(Func<bool> stillSafe, Func<int, bool> down, Func<Input[], uint> send)
-        {
-            // Never release keys held by the user, or turn Ctrl+V into another shortcut.
-            foreach (int key in new[] { 0x10, 0x11, 0x12, 0x5b, 0x5c, 0x56 })
-                if (down(key)) return false;
             uint process;
             IntPtr layout = GetKeyboardLayout(GetWindowThreadProcessId(GetForegroundWindow(), out process));
             uint scan = MapVirtualKeyEx(0x56, 0, layout);
-            if (scan == 0 || scan > 0xff) return false;
-            ushort vScan = (ushort)scan;
-            if (!stillSafe()) return false;
-            // Remote clients can forward scan codes rather than virtual keys.
-            // VK-only SendInput produces scan=0 in real low-level events; use
-            // physical left Ctrl and the foreground layout's V scan code.
-            uint sent = send(new[] { KeyEvent(0x11, 0x1d, false), KeyEvent(0x56, vScan, false), KeyEvent(0x56, vScan, true), KeyEvent(0x11, 0x1d, true) });
-            // Only releases are permitted after a partial insertion; never send V down again.
-            if (sent > 0 && sent < 4) send(new[] { KeyEvent(0x56, vScan, true), KeyEvent(0x11, 0x1d, true) });
-            return sent == 4;
+            var guard = new PasteInputGuard();
+            return new PasteKeySequence(scan <= 0xff ? (ushort)scan : (ushort)0, guard.Marker,
+                delegate(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; },
+                delegate(Input[] inputs) { return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))); },
+                guard.Start, guard.Stop, delegate { return guard.Interrupted; }, guard.MayRelease);
+        }
+    }
+
+    // Exists only during the ~200 ms key sequence. It records one interruption
+    // bit and user-owned Ctrl/V state; no text, key history, or coordinates.
+    sealed class PasteInputGuard
+    {
+        delegate IntPtr HookCallback(int code, IntPtr message, IntPtr data);
+        [StructLayout(LayoutKind.Sequential)]
+        struct KeyboardEvent { public uint Code, Scan, Flags, Time; public UIntPtr Extra; }
+        [StructLayout(LayoutKind.Sequential)]
+        struct MouseEvent { public int X, Y; public uint Data, Flags, Time; public UIntPtr Extra; }
+        [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int kind, HookCallback callback, IntPtr module, uint thread);
+        [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+        [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr data);
+        [DllImport("kernel32.dll")] static extern IntPtr GetModuleHandle(string name);
+        readonly HookCallback keyboardCallback, mouseCallback;
+        IntPtr keyboard, mouse;
+        GCHandle root;
+        bool userControl, userV;
+        public readonly UIntPtr Marker = (UIntPtr)(0x5756430000000000UL | (uint)Process.GetCurrentProcess().Id);
+        public bool Interrupted { get; private set; }
+        public PasteInputGuard() { keyboardCallback = OnKeyboard; mouseCallback = OnMouse; }
+        IntPtr OnKeyboard(int code, IntPtr message, IntPtr data)
+        {
+            if (code >= 0)
+            {
+                var input = (KeyboardEvent)Marshal.PtrToStructure(data, typeof(KeyboardEvent));
+                if (input.Extra != Marker)
+                {
+                    Interrupted = true;
+                    if (input.Code == 0xa2 || input.Code == 0x11) userControl = (input.Flags & 0x80) == 0;
+                    if (input.Code == 0x56) userV = (input.Flags & 0x80) == 0;
+                }
+            }
+            return CallNextHookEx(keyboard, code, message, data);
+        }
+        IntPtr OnMouse(int code, IntPtr message, IntPtr data)
+        {
+            if (code >= 0 && ((MouseEvent)Marshal.PtrToStructure(data, typeof(MouseEvent))).Extra != Marker) Interrupted = true;
+            return CallNextHookEx(mouse, code, message, data);
+        }
+        public bool MayRelease(int key) { return key == 0xa2 ? !userControl : !userV; }
+        public bool Start()
+        {
+            root = GCHandle.Alloc(this);
+            keyboard = SetWindowsHookEx(13, keyboardCallback, GetModuleHandle(null), 0);
+            mouse = SetWindowsHookEx(14, mouseCallback, GetModuleHandle(null), 0);
+            if (keyboard != IntPtr.Zero && mouse != IntPtr.Zero) return true;
+            Stop(); return false;
+        }
+        public void Stop()
+        {
+            if (keyboard != IntPtr.Zero) UnhookWindowsHookEx(keyboard);
+            if (mouse != IntPtr.Zero) UnhookWindowsHookEx(mouse);
+            keyboard = mouse = IntPtr.Zero;
+            if (root.IsAllocated) root.Free();
         }
     }
 
@@ -83,6 +123,10 @@ namespace WeTypeVoiceCapture
         readonly Action<IntPtr> foregroundChanged;
         IntPtr foregroundHook, desktopHook;
         GCHandle callbackRoot;
+        PasteKeySequence keys;
+        uint pasteSequence;
+        public bool Pasting { get { return keys != null && keys.Running; } }
+        public void CancelPaste() { if (keys != null) keys.Dispose(); keys = null; }
 
         public WindowsPasteDesktop(Action<IntPtr> foregroundChanged)
         {
@@ -177,6 +221,8 @@ namespace WeTypeVoiceCapture
 
         public PasteAttempt Paste(RemotePasteTarget target, string text, uint inputStamp)
         {
+            if (keys != null)
+                return keys.Step(DateTime.UtcNow, delegate { return IsCurrent(target) && GetClipboardSequenceNumber() == pasteSequence; });
             RemotePasteTarget current = CaptureTarget();
             if (current == null || current.Window != target.Window || current.ProcessId != target.ProcessId ||
                 current.Title != target.Title || InputStamp != inputStamp) return PasteAttempt.Unsafe;
@@ -196,12 +242,13 @@ namespace WeTypeVoiceCapture
                 finally { GlobalUnlock(memory); }
             }
             finally { CloseClipboard(); }
-            bool sent = PasteKeyboard.Send(delegate {
+            pasteSequence = sequence;
+            keys = PasteKeyboard.Create();
+            return keys.Step(DateTime.UtcNow, delegate {
                 return IsCurrent(target) && InputStamp == inputStamp && GetClipboardSequenceNumber() == sequence;
             });
-            return sent ? PasteAttempt.Sent : PasteAttempt.Failed;
         }
 
-        public void Dispose() { StopMonitoring(); }
+        public void Dispose() { CancelPaste(); StopMonitoring(); }
     }
 }
