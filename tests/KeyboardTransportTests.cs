@@ -73,11 +73,14 @@ namespace WeTypeVoiceCapture
                     {
                         foreach (var item in events) Console.WriteLine("native key={0:X2} scan={1:X2} flags={2:X2}", item.Code, item.Scan, item.Flags);
                         Console.WriteLine("Receiver async Ctrl state while processing V: " + form.ControlAtV);
+                        bool released = (GetAsyncKeyState(0x11) & 0x8000) == 0 && (GetAsyncKeyState(0x56) & 0x8000) == 0;
+                        Console.WriteLine("Ctrl and V released after completion: " + released);
                         bool valid = events.Count == 4 && events[0].Scan == 0x1d && events[1].Scan == 0x2f && events[2].Scan == 0x2f && events[3].Scan == 0x1d &&
                             (events[0].Flags & 0x80) == 0 && (events[1].Flags & 0x80) == 0 && (events[2].Flags & 0x80) != 0 && (events[3].Flags & 0x80) != 0;
                         Console.WriteLine(valid ? "PASS: native Ctrl/V events retain physical scan codes and balanced releases." : "FAIL: native Ctrl/V events lack the physical key identity required for remote forwarding.");
                         if (form.ControlAtV != true) Console.Error.WriteLine("FAIL: Ctrl was already released when the receiving window processed V.");
-                        result = valid && form.ControlAtV == true ? 0 : 1; form.Close();
+                        if (!released) Console.Error.WriteLine("FAIL: Ctrl or V remained pressed after completion.");
+                        result = valid && form.ControlAtV == true && released ? 0 : 1; form.Close();
                     }
                 };
                 try { Application.Run(form); }
