@@ -1,5 +1,5 @@
-// Read-only adapter for hash-verified WeType versions. No hooks, input synthesis, focus APIs,
-// recording APIs, code injection, or writes into the input-method process.
+// Read-only adapter for hash-verified WeType versions. Optional remote paste is
+// isolated in WindowsPasteDesktop; input-method memory is never modified.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -115,8 +115,11 @@ namespace WeTypeVoiceCapture
         readonly string appTitle = "微信语音复制 v" + Application.ProductVersion;
         readonly NotifyIcon tray;
         readonly Icon trayIcon;
-        readonly ToolStripMenuItem stateItem, pauseItem, startupItem;
+        readonly ToolStripMenuItem stateItem, pauseItem, startupItem, autoPasteItem;
         readonly StartupRegistration startup;
+        readonly AutoPasteSettings autoPasteSettings = new AutoPasteSettings();
+        readonly WindowsPasteDesktop pasteDesktop;
+        readonly AutoPasteController autoPaste;
         readonly System.Windows.Forms.Timer timer;
         readonly string statusFile;
         readonly TranscriptCapture transcripts;
@@ -132,7 +135,9 @@ namespace WeTypeVoiceCapture
             string folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "WeTypeVoiceCapture");
             Directory.CreateDirectory(folder);
             statusFile = Path.Combine(folder, "status.txt");
-            transcripts = new TranscriptCapture(CopyText, Status);
+            pasteDesktop = new WindowsPasteDesktop(delegate(IntPtr window) { autoPaste.ForegroundChanged(window); });
+            autoPaste = new AutoPasteController(pasteDesktop, Status);
+            transcripts = new TranscriptCapture(CopyText, TranscriptStatus, autoPaste.BeginRound, autoPaste.Cancel);
             startup = new StartupRegistration(Application.ExecutablePath);
             var menu = new ContextMenuStrip();
             stateItem = new ToolStripMenuItem("正在连接微信输入法") { Enabled = false };
@@ -144,11 +149,13 @@ namespace WeTypeVoiceCapture
             };
             startupItem = new ToolStripMenuItem("开机启动");
             startupItem.Click += ToggleStartup;
+            autoPasteItem = new ToolStripMenuItem("向日葵自动粘贴");
+            autoPasteItem.Click += ToggleAutoPaste;
             menu.Opening += delegate { RefreshStartupMenu(); };
             menu.Items.Add(new ToolStripMenuItem(appTitle) { Enabled = false });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(stateItem); menu.Items.Add(pauseItem); menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(startupItem); menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add(autoPasteItem); menu.Items.Add(startupItem); menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("退出", null, delegate { ExitThread(); });
             using (var stream = typeof(Capture).Assembly.GetManifestResourceStream("WeTypeVoiceCapture.AppIcon.ico"))
             using (var icon = new Icon(stream, SystemInformation.SmallIconSize))
@@ -161,6 +168,19 @@ namespace WeTypeVoiceCapture
                 tray.ShowBalloonTip(5000, "开机启动设置未更新", "无法更新启动路径，请在托盘菜单中重新设置开机启动。", ToolTipIcon.Warning);
             }
             RefreshStartupMenu();
+            try
+            {
+                if (autoPasteSettings.Enabled)
+                {
+                    if (!pasteDesktop.StartMonitoring()) throw new IOException("无法监听前台窗口变化");
+                    autoPaste.SetEnabled(true); autoPasteItem.Checked = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (!IsStartupError(ex)) throw;
+                tray.ShowBalloonTip(5000, "自动粘贴未开启", "仍可正常复制，请在托盘菜单重新开启向日葵自动粘贴。", ToolTipIcon.Warning);
+            }
             timer = new System.Windows.Forms.Timer { Interval = 250 };
             timer.Tick += Tick; timer.Start();
             Status("正在连接微信输入法");
@@ -199,6 +219,33 @@ namespace WeTypeVoiceCapture
             RefreshStartupMenu();
         }
 
+        void ToggleAutoPaste(object sender, EventArgs args)
+        {
+            bool enable = !autoPaste.Enabled;
+            autoPaste.SetEnabled(false); pasteDesktop.StopMonitoring();
+            try
+            {
+                if (enable && !pasteDesktop.StartMonitoring()) throw new IOException("无法监听前台窗口变化");
+                autoPasteSettings.SetEnabled(enable);
+                autoPaste.SetEnabled(enable);
+                Status(enable ? "向日葵自动粘贴已开启，从下一轮生效" : "向日葵自动粘贴已关闭");
+            }
+            catch (Exception ex)
+            {
+                if (!IsStartupError(ex)) throw;
+                pasteDesktop.StopMonitoring();
+                MessageBox.Show("本次运行已关闭自动粘贴，但设置未能保存：" + ex.Message,
+                    "微信语音复制", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            autoPasteItem.Checked = autoPaste.Enabled;
+        }
+
+        void TranscriptStatus(string value)
+        {
+            Status(autoPaste.Pending && value.StartsWith("已复制 ", StringComparison.Ordinal) ?
+                "已复制，等待向日葵自动粘贴" : value);
+        }
+
         void Status(string value)
         {
             if (value == lastStatus) return;
@@ -206,7 +253,10 @@ namespace WeTypeVoiceCapture
             string tooltip = appTitle + "：" + value;
             tray.Text = tooltip.Substring(0, Math.Min(63, tooltip.Length));
             // Only operational status is saved; transcripts and audio are never logged.
-            try { File.WriteAllText(statusFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + value + Environment.NewLine + "本次运行已复制次数：" + copyCount, new UTF8Encoding(false)); }
+            try { File.WriteAllText(statusFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + value +
+                Environment.NewLine + "本次运行已复制次数：" + copyCount + Environment.NewLine +
+                "向日葵自动粘贴：" + (autoPaste.Enabled ? "开启" : "关闭") + Environment.NewLine +
+                "本次运行已触发自动粘贴次数：" + autoPaste.TriggeredCount, new UTF8Encoding(false)); }
             catch (IOException) { }
         }
 
@@ -214,6 +264,7 @@ namespace WeTypeVoiceCapture
         {
             clipboard.SetText(text);
             copyCount++;
+            autoPaste.Copied(text, DateTime.UtcNow);
         }
 
         void Tick(object sender, EventArgs args)
@@ -238,7 +289,8 @@ namespace WeTypeVoiceCapture
                 Frame frame = source.Snapshot();
                 errorSince = DateTime.MinValue;
                 transcripts.Observe(frame, DateTime.UtcNow);
-                timer.Interval = transcripts.Armed || frame.Active ? 25 : 200;
+                autoPaste.Tick(DateTime.UtcNow);
+                timer.Interval = transcripts.Armed || frame.Active || autoPaste.Pending ? 25 : 200;
             }
             catch (ExternalException)
             {
@@ -246,6 +298,7 @@ namespace WeTypeVoiceCapture
             }
             catch (Exception)
             {
+                autoPaste.Cancel();
                 if (errorSince == DateTime.MinValue) errorSince = DateTime.UtcNow;
                 if ((DateTime.UtcNow - errorSince).TotalSeconds >= 2)
                 {
@@ -259,6 +312,7 @@ namespace WeTypeVoiceCapture
         {
             timer.Stop(); timer.Dispose();
             if (source != null) source.Dispose();
+            autoPaste.Cancel(); pasteDesktop.Dispose();
             clipboard.Dispose();
             Status("已退出"); tray.Visible = false; tray.Dispose(); trayIcon.Dispose();
             base.ExitThreadCore();
@@ -270,6 +324,16 @@ namespace WeTypeVoiceCapture
         [STAThread]
         static void Main(string[] args)
         {
+            if (args.Length > 1 && args[0] == "--probe-autopaste")
+            {
+                using (var desktop = new WindowsPasteDesktop(delegate { }))
+                {
+                    bool monitoring = desktop.StartMonitoring();
+                    var target = desktop.CaptureTarget();
+                    File.WriteAllText(args[1], "monitoring_available=" + monitoring + "\r\nremote_foreground=" + (target != null));
+                }
+                return; // No keyboard, clipboard, focus or settings operations.
+            }
             if (args.Length > 0 && args[0] == "--probe")
             {
                 string output = args.Length > 1 ? args[1] : Path.Combine(Path.GetTempPath(), "wetype-source-probe.txt");

@@ -15,21 +15,27 @@ namespace WeTypeVoiceCapture
     sealed class TranscriptCapture
     {
         readonly Action<string> copy, status;
+        readonly Action<bool> beginRound;
+        readonly Action abandonRound;
         Frame previous;
         bool armed, canceled;
         string candidate;
         DateTime stableSince;
 
-        public TranscriptCapture(Action<string> copy, Action<string> status)
+        public TranscriptCapture(Action<string> copy, Action<string> status,
+            Action<bool> beginRound = null, Action abandonRound = null)
         {
             this.copy = copy;
             this.status = status;
+            this.beginRound = beginRound ?? delegate { };
+            this.abandonRound = abandonRound ?? delegate { };
         }
 
         public bool Armed { get { return armed; } }
 
         public void Reset()
         {
+            abandonRound();
             previous = null;
             armed = false;
             candidate = null;
@@ -39,6 +45,7 @@ namespace WeTypeVoiceCapture
         {
             if (previous == null || previous.Engine != frame.Engine || previous.Manager != frame.Manager)
             {
+                beginRound(false);
                 // Completed text left over before startup/resume is never copied.
                 armed = frame.Active;
                 canceled = frame.CancelPending; candidate = null;
@@ -47,11 +54,13 @@ namespace WeTypeVoiceCapture
                 (frame.State == 1 && previous.State == 2) ||
                 (frame.Session.Length > 0 && previous.Session.Length > 0 && frame.Session != previous.Session)))
             {
+                beginRound(true);
                 armed = true; canceled = false; candidate = null;
             }
             if (armed)
             {
                 canceled |= frame.CancelPending;
+                if (canceled) abandonRound();
                 if (frame.Active) status(frame.State == 1 ? "正在识别，等待结束" : "正在等待最终结果");
                 if (frame.State == 3 && frame.Finished)
                 {
@@ -66,11 +75,11 @@ namespace WeTypeVoiceCapture
                             copy(candidate);
                             status("已复制 " + candidate.Length + " 字，等待下一轮");
                         }
-                        else status(canceled ? "本轮已取消，未复制" : "本轮没有可复制的最终结果");
+                        else { abandonRound(); status(canceled ? "本轮已取消，未复制" : "本轮没有可复制的最终结果"); }
                         armed = false; candidate = null;
                     }
                 }
-                else if (frame.State == 0) { armed = false; candidate = null; status("本轮结束，未复制"); }
+                else if (frame.State == 0) { abandonRound(); armed = false; candidate = null; status("本轮结束，未复制"); }
             }
             previous = frame;
         }
@@ -78,7 +87,7 @@ namespace WeTypeVoiceCapture
         public void ClipboardBusy(DateTime now)
         {
             if ((now - stableSince).TotalSeconds > 8)
-            { armed = false; candidate = null; status("剪贴板持续被占用，本轮未复制"); }
+            { abandonRound(); armed = false; candidate = null; status("剪贴板持续被占用，本轮未复制"); }
             else status("剪贴板正忙，正在重试");
         }
     }

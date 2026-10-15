@@ -47,10 +47,22 @@
 ## 输入焦点与剪贴板
 
 3.0.0.34 的 `deliverFinalText`（RVA `0x94B1B0`）包含直接送字和仅剪贴板输出的分支；焦点、目标应用等状态会影响输入法自身的输出路径。
-本工具不判断或修改输入焦点：只要观察到一轮未取消的语音正常完成、结果稳定，就复制到 Windows 剪贴板。
+复制不依赖输入焦点：只要观察到一轮未取消的语音正常完成、结果稳定，就复制到 Windows 剪贴板。可选自动粘贴单独检查前台窗口，不切换焦点。
 v0.2.4 起，`ClipboardTextWriter` 先准备完整的 `CF_UNICODETEXT` 内存，再通过隐藏的消息窗口，在一次 `OpenClipboard` / `CloseClipboard` 事务内发布。避免 `Clipboard.SetDataObject(..., true)` 的 OLE 设置和刷新阶段产生两次变化通知，以及首次通知时剪贴板仍被刷新阶段占用的窗口。消息窗口不激活、不切换焦点；写入失败仍由现有轮次逻辑重试。
 输入框内外都应更新剪贴板；远端粘贴还依赖远程软件的同步。
 版本不匹配时，本工具停止读取，此时仍有可能看到输入法自己的剪贴板输出，不能据此认定本工具正常。
+
+## 可选自动粘贴（v0.3.0）
+
+`AutoPasteController` 只在观察到新轮次且开启选项时获取目标；启动/恢复/对象变化时已经进行中的语音只保留原复制行为。复制成功才安排 750ms 后的一次粘贴，读取剪贴板遇到占用最多再等 2 秒；已经发送过或发送失败的按键均不重发。
+
+`WindowsPasteDesktop` 核对 `AweSun` 进程、可见前台窗口及 `FlutterMultiWindow` / `ORAY_FLUTTER_VIEW_CONTAINER` 配对结构（同进程、同标题）。主界面 `FLUTTER_RUNNER_WIN32_WINDOW` 不放行。该识别来自当前安装客户端的只读窗口枚举，不宣称兼容所有向日葵版本；窗口标题仅在内存中比较。
+
+开启后通过进程外 `SetWinEventHook` 监听前台及桌面切换，关闭时解除监听。切走再切回也取消，发送前再次核对窗口、剪贴板 Unicode 正文/序列号和最后输入时间；按键已按下时不发送。模拟 Ctrl+V 的结构按 x64 INPUT 布局定义，部分插入仅补释放，不再次按 V，不发送 Enter。
+
+远程同步没有可用的确认接口，本机固定等待不能保证任意网络延迟下的远端就绪。状态区分“复制成功”与“已触发粘贴”；不把 Windows 接受输入事件等同于远端内容成功。目标远端的文本框及插入点由用户选择，本程序不读取远端控件树。
+
+原生行为依据：[SetWinEventHook](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwineventhook)、[SendInput](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-sendinput)、[GetLastInputInfo](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getlastinputinfo)。
 
 ## 更新适配时的要求
 
